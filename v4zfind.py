@@ -5,7 +5,8 @@ V4Z User Finder — original username & email OSINT checker.
 
 Given a username, it checks whether a PUBLIC profile exists on a curated
 list of platforms and prints the profile links. Given an email, it checks
-the public Gravatar profile for that email and suggests a username search
+the public Gravatar profile for that email, checks known data-breach
+lists for it, and suggests a username search
 from the address prefix.
 
 Every site definition below (URL pattern + "account missing" fingerprints)
@@ -31,7 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-VERSION = "1.1"
+VERSION = "1.2"
 UA = ("Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36")
 TIMEOUT = 10          # seconds per site
@@ -624,9 +625,93 @@ def check_email(email):
         print(Y + "  ❌ No public Gravatar profile for this email." + X)
     else:
         print(Y + f"  ❓ Gravatar check unclear (status {status}). Try again later." + X)
+    check_breaches(email)
     prefix = email.split("@")[0]
     print(DIM + f"\n  Tip: people often reuse the same name everywhere."
                 f" Run:  v4zfind --user {prefix}" + X)
+
+
+def fetch_json(url, timeout=15):
+    """GET a URL and parse the JSON body. Returns (data, ok)."""
+    req = urllib.request.Request(url, headers={"User-Agent": UA,
+                                                "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read(200000).decode("utf-8", "replace")), True
+    except Exception:
+        return None, False
+
+
+def check_breaches(email):
+    """Check the email against known data-breach lists (metadata only).
+
+    Uses two free public APIs (XposedOrNot + LeakCheck). Only breach
+    names, dates and exposed data types come back - never passwords or
+    leaked records. The email is sent to those APIs, like any
+    breach-check website does.
+    """
+    print("\n" + C + "  🔐 Data-leak check (known breaches)..." + X)
+    print(DIM + "  (email is sent to the XposedOrNot + LeakCheck public APIs)" + X)
+    q = urllib.parse.quote(email, safe="@.")
+    names, seen, fields = [], set(), set()
+    answered = 0
+    clean = False
+
+    # XposedOrNot - free, no key
+    data, ok = fetch_json(f"https://api.xposedornot.com/v1/check-email/{q}")
+    if ok and isinstance(data, dict):
+        if "breaches" in data:
+            answered += 1
+            got = 0
+            for group in data.get("breaches") or []:
+                if isinstance(group, list):
+                    for n in group:
+                        n = str(n).strip()
+                        if n and n.lower() not in seen:
+                            seen.add(n.lower())
+                            names.append(n)
+                            got += 1
+            if got == 0:
+                clean = True
+        elif str(data.get("Error", "")).lower() == "not found":
+            answered += 1
+            clean = True
+
+    # LeakCheck public API - breach metadata only
+    data, ok = fetch_json(f"https://leakcheck.io/api/public?check={q}")
+    if ok and isinstance(data, dict):
+        if data.get("success"):
+            answered += 1
+            for src in data.get("sources") or []:
+                n = str(src.get("name", "")).strip()
+                if n and n.lower() not in seen:
+                    seen.add(n.lower())
+                    names.append(n)
+            for f in data.get("fields") or []:
+                fields.add(str(f))
+            if not data.get("found"):
+                clean = True
+        elif str(data.get("error", "")).lower() == "not found":
+            answered += 1
+            clean = True
+
+    if names:
+        print(R + B + f"  ⚠️  LEAKED - found in {len(names)} known breach list(s):" + X)
+        for n in names[:15]:
+            print(f"   {R}✖{X} {n}")
+        if len(names) > 15:
+            print(DIM + f"   ... and {len(names) - 15} more" + X)
+        if fields:
+            print(Y + "  Exposed data types: "
+                  + ", ".join(sorted(fields)[:12]) + X)
+        print(Y + "  → Change passwords on accounts using this email,"
+                  " turn on 2FA, never reuse passwords." + X)
+    elif answered and clean:
+        print(G + "  ✅ Not found in any known breach database." + X)
+        print(DIM + "  (That means 'not in the known lists' - not 100% safe.)" + X)
+    else:
+        print(Y + "  ❓ Leak check could not be completed"
+                  " (network / API limit). Try again later." + X)
 
 
 BANNER = r"""
@@ -645,7 +730,7 @@ def menu():
     while True:
         print(BANNER)
         print("  1) 🔍 Search by username")
-        print("  2) ✉️  Search by email (public profile only)")
+        print("  2) ✉️  Search by email (profile + leak check)")
         print("  3) ❌ Exit")
         choice = input("\n  Choose: ").strip()
         if choice == "1":
@@ -675,8 +760,8 @@ def main(argv):
     if args[0] in ("-h", "--help"):
         print("Usage:")
         print("  v4zfind                      interactive menu")
-        print("  v4zfind --user NAME [--save] search a username on 100+ sites")
-        print("  v4zfind --email ADDRESS      check public Gravatar profile")
+        print("  v4zfind --user NAME [--save] search a username on 168 sites")
+        print("  v4zfind --email ADDRESS      Gravatar profile + data-leak check")
         return 0
     if args[0] == "--user" and len(args) >= 2:
         search_username(args[1], save=save)

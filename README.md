@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Python-3.x-00ff9d?style=flat-square" alt="Python 3">
   <img src="https://img.shields.io/badge/Platform-Termux-00ff9d?style=flat-square" alt="Termux">
   <img src="https://img.shields.io/badge/Platforms-168-00ff9d?style=flat-square" alt="168 platforms">
-  <img src="https://img.shields.io/badge/Version-1.1-00ff9d?style=flat-square" alt="v1.1">
+  <img src="https://img.shields.io/badge/Version-1.2-00ff9d?style=flat-square" alt="v1.1">
 </p>
 
 ## ✨ What it does
@@ -23,7 +23,7 @@
   - ✅ **FOUND** — strong "profile exists" signal
   - ❌ **NOT FOUND** — strong "no such profile" signal
   - ❓ **UNKNOWN** — the site blocked the check; open the link and verify manually
-- `v4zfind --email <address>` — checks the public **Gravatar** profile for that email. Email search is limited by nature: only public Gravatar data exists, and the tool says so instead of inventing "complete info".
+- `v4zfind --email <address>` — checks the public **Gravatar** profile **and whether the email appears in known data breaches** (via the free XposedOrNot + LeakCheck public APIs; only breach names/dates/exposed data types — never passwords). No Gravatar profile or no known leak is reported honestly, never dressed up as "complete info".
 - `--save` writes a TXT + JSON report to `~/v4zfind-reports/`.
 - ⚡ Fast parallel checks, pure Python standard library — **zero pip installs**.
 
